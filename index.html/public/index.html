@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ระบบสอบออนไลน์</title>
+<style>
+:root{--bg:#f4f6fb;--c:#fff;--t:#1d2433;--m:#6b7280;--p:#2563eb;--d:#dc2626;--ok:#16a34a;--b:#dfe3ec}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1420;--c:#182030;--t:#e8ecf4;--m:#9aa5b8;--b:#2a3550}}
+*{box-sizing:border-box}body{margin:0;font:16px/1.55 system-ui,"Noto Sans Thai",sans-serif;background:var(--bg);color:var(--t)}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 18px;background:var(--c);border-bottom:1px solid var(--b);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+.wrap{max-width:900px;margin:18px auto;padding:0 14px}.card{background:var(--c);border:1px solid var(--b);border-radius:12px;padding:16px;margin:0 0 14px}
+.w{max-width:380px;margin:12vh auto}input,select,textarea{width:100%;padding:9px 11px;margin:4px 0 10px;border:1px solid var(--b);border-radius:8px;background:var(--bg);color:var(--t);font:inherit}
+input[type=radio],input[type=checkbox]{width:auto;margin:0 8px 0 0}label{display:block;font-size:.92rem}
+button,.btn{background:var(--p);color:#fff;border:0;border-radius:8px;padding:8px 16px;font:inherit;cursor:pointer;display:inline-block}
+button.s,.btn.s{background:transparent;color:var(--p);border:1px solid var(--p)}button.d{color:var(--d);border-color:var(--d)}
+.m{color:var(--m);font-size:.9rem}.er{color:var(--d)}.ok{color:var(--ok)}.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:0 12px}
+.op{display:block;padding:8px 10px;border:1px solid var(--b);border-radius:8px;margin:6px 0;cursor:pointer}.tm{font:600 1.2rem ui-monospace,monospace}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:99}.ov[hidden]{display:none}
+.tw{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:.92rem}th,td{padding:8px;border-bottom:1px solid var(--b);text-align:left;white-space:nowrap}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--d);color:#fff;padding:10px 18px;border-radius:8px;z-index:100}
+</style></head><body><div id="app"></div>
+<script>
+const $=s=>document.querySelector(s);let T=localStorage.getItem('tk'),ME=null,MI=null,X=null,Q=[],EID=null;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=t=>new Date(t).toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'});
+const dl=ms=>new Date(ms-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,16);
+async function api(m,u,b){const r=await fetch('/api'+u,{method:m,headers:{'content-type':'application/json','x-token':T||''},body:b?JSON.stringify(b):undefined});
+ const j=await r.json().catch(()=>({}));if(r.status===401&&ME){logout();}if(!r.ok)throw Object.assign(new Error(j.error||'เกิดข้อผิดพลาด'),{status:r.status});return j}
+const view=h=>{$('#app').innerHTML=h};
+const top=()=>`<div class="bar"><b>📝 ระบบสอบออนไลน์</b><span>${esc(ME.name)} (${ME.role==='admin'?'ผู้ดูแล':'ผู้สอบ'}) <button class="s" onclick="logout()">ออกจากระบบ</button></span></div>`;
+function toast(t){const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.append(e);setTimeout(()=>e.remove(),4000)}
+function logout(){clearInterval(MI);T=null;ME=null;localStorage.removeItem('tk');loginView()}
+
+/* ---------- เข้าสู่ระบบ ---------- */
+function loginView(reg){view(`<div class="card w"><h2>${reg?'สมัครสมาชิกผู้สอบ':'เข้าสู่ระบบ'}</h2>
+<input id="u" placeholder="ชื่อผู้ใช้">${reg?'<input id="n" placeholder="ชื่อ-นามสกุล">':''}<input id="p" type="password" placeholder="รหัสผ่าน (อย่างน้อย 6 ตัว)">
+<button onclick="doAuth(${!!reg})">${reg?'สมัคร':'เข้าสู่ระบบ'}</button>
+<p class="m"><a href="#" onclick="loginView(${!reg});return false">${reg?'มีบัญชีแล้ว? เข้าสู่ระบบ':'สมัครผู้สอบใหม่'}</a></p><p id="e" class="er"></p></div>`)}
+async function doAuth(reg){try{const r=await api('POST',reg?'/register':'/login',{username:$('#u').value.trim(),password:$('#p').value,name:reg?$('#n').value:undefined});
+ T=r.token;localStorage.setItem('tk',T);ME=r.user;home()}catch(e){$('#e').textContent=e.message}}
+function home(){clearInterval(MI);ME.role==='admin'?adminHome():studentHome()}
+
+/* ---------- ผู้สอบ ---------- */
+async function studentHome(){const{exams}=await api('GET','/exams');
+ view(top()+`<div class="wrap"><h2>รายการข้อสอบ</h2>${exams.map(e=>`<div class="card"><b>${esc(e.title)}</b><div class="m">เวลาทำ ${e.duration} นาที · เปิด ${fmt(e.openAt)} – ปิด ${fmt(e.closeAt)}</div><p>${stBtn(e)}</p></div>`).join('')||'<p class="m">ยังไม่มีข้อสอบ</p>'}</div>`)}
+function stBtn(e){const n=Date.now();
+ if(e.status==='submitted')return `<span class="ok">ส่งแล้ว</span> ${e.result?(e.result.pending?'· รอผู้ดูแลตรวจบางข้อ · ':'· ')+`<b>คะแนน ${e.result.score}/${e.result.total}</b>`:''}`;
+ if(e.status==='in_progress')return `<button onclick="startExam('${e.id}')">ทำต่อ</button>`;
+ if(n<e.openAt)return '<span class="m">ยังไม่ถึงเวลาเปิด</span>';if(n>e.closeAt)return '<span class="er">ปิดรับแล้ว</span>';
+ return `<button onclick="startExam('${e.id}')">เริ่มสอบ</button>`}
+async function startExam(id){
+ try{await document.documentElement.requestFullscreen()}catch(e){}
+ if(!confirm('เมื่อเริ่มสอบ ระบบจะล็อกเป็นโหมดเต็มจอ และบันทึกทุกครั้งที่สลับหน้าต่าง/ออกจากเต็มจอ หากเกินที่ผู้ดูแลกำหนด ข้อสอบจะถูกส่งอัตโนมัติ\n\nต้องการเริ่มหรือไม่?')){if(document.fullscreenElement)document.exitFullscreen();return}
+ try{runExam(await api('POST','/exams/'+id+'/start'))}catch(e){alert(e.message);if(document.fullscreenElement)document.exitFullscreen();studentHome()}}
+function qHtml(q,i){const a=X.ans[q.id];let b='';
+ if(q.type==='mcq')b=q.options.map((o,j)=>`<label class="op"><input type="radio" name="q${q.id}" ${a==j+1?'checked':''} onchange="setA('${q.id}','${j+1}')">${esc(o)}</label>`).join('');
+ else if(q.type==='short')b=`<input value="${esc(a||'')}" oninput="setA('${q.id}',this.value)" autocomplete="off">`;
+ else if(q.type==='essay')b=`<textarea rows="6" oninput="setA('${q.id}',this.value)">${esc(a||'')}</textarea>`;
+ else b=`<input type="file" onchange="upl('${q.id}',this)"><div id="f${q.id}" class="m">${a&&a.name?'ไฟล์ที่ส่งแล้ว: '+esc(a.name):''}</div>`;
+ return `<div class="card"><b>ข้อ ${i+1}.</b> <span class="m">(${q.points} คะแนน)</span><p style="white-space:pre-wrap">${esc(q.text)}</p>${b}</div>`}
+function runExam(d){
+ if(d.status!=='in_progress')return finished(d);
+ X={d,off:d.serverNow-Date.now(),ans:d.answers||{},dirty:false,lastV:0};
+ view(`<div class="bar"><b>${esc(d.exam.title)}</b><span id="tm" class="tm"></span></div><div class="wrap">${d.exam.questions.map(qHtml).join('')}<button onclick="submitExam()">ส่งข้อสอบ</button></div>
+ <div id="ov" class="ov" hidden><div class="card"><h3>⚠️ ออกจากโหมดสอบ</h3><p>กรุณากลับเข้าโหมดเต็มจอเพื่อทำข้อสอบต่อ (ระบบบันทึกเหตุการณ์แล้ว)</p><button onclick="goFs()">กลับเข้าเต็มจอ</button></div></div>`);
+ X.iv=setInterval(tick,500);X.sv=setInterval(save,5000);lock(true);tick();
+ if(!document.fullscreenElement)$('#ov').hidden=false}
+const goFs=()=>document.documentElement.requestFullscreen().catch(()=>{});
+function setA(id,v){X.ans[id]=v;X.dirty=true}
+function tick(){const l=X.d.deadline-(Date.now()+X.off);if(l<=0){submitExam(true);return}
+ const s=Math.ceil(l/1000);$('#tm').textContent=`⏱ ${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor(s/60)%60).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+ $('#tm').style.color=s<300?'var(--d)':''}
+async function save(){try{const r=await api('PUT','/attempts/'+X.d.id+'/answers',{answers:X.ans});X.dirty=false;X.off=r.serverNow-Date.now()}catch(e){if(e.status===409)endNow()}}
+async function endNow(){const d=await api('GET','/attempts/'+X.d.id);stop();finished(d)}
+function stop(){clearInterval(X.iv);clearInterval(X.sv);lock(false);X.stopped=true}
+async function submitExam(auto){if(X.stopped)return;if(!auto&&!confirm('ยืนยันส่งข้อสอบ? ส่งแล้วจะแก้ไขไม่ได้'))return;
+ stop();try{finished(await api('POST','/attempts/'+X.d.id+'/submit',{answers:X.ans}))}catch(e){alert(e.message);studentHome()}}
+function finished(d){if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});
+ view(top()+`<div class="wrap"><div class="card"><h2>✅ ส่งข้อสอบเรียบร้อย</h2><p>ไม่สามารถแก้ไขคำตอบได้อีก</p>${d.result?`<p><b>คะแนน ${d.result.score}/${d.result.total}</b>${d.result.pending?' (ยังมีข้อที่รอผู้ดูแลตรวจ)':''}</p>`:'<p class="m">ผู้ดูแลจะประกาศผลภายหลัง</p>'}<button onclick="studentHome()">กลับหน้าหลัก</button></div></div>`)}
+async function upl(qid,el){const f=el.files[0];if(!f)return;if(f.size>10*1048576){alert('ไฟล์ใหญ่เกิน 10MB');el.value='';return}
+ $('#f'+qid).textContent='กำลังอัปโหลด...';const rd=new FileReader();rd.onload=async()=>{try{const r=await api('POST','/attempts/'+X.d.id+'/upload',{qid,name:f.name,data:rd.result.split(',')[1]});$('#f'+qid).textContent='ไฟล์ที่ส่งแล้ว: '+r.name}catch(e){$('#f'+qid).textContent=e.message}};rd.readAsDataURL(f)}
+/* ล็อกหน้าจอ / ตรวจจับการโกง */
+function viol(t){const n=Date.now();if(n-X.lastV<1500)return;X.lastV=n;ev(t)}
+function ev(t){api('POST','/attempts/'+X.d.id+'/event',{type:t}).then(r=>{if(r.status==='submitted'){stop();toast('ข้อสอบถูกส่งอัตโนมัติ');endNowSafe()}else if(r.counted)toast(`⚠️ ตรวจพบการออกจากหน้าสอบ ${r.violations}${r.max?'/'+r.max:''} ครั้ง`)}).catch(()=>{})}
+async function endNowSafe(){const d=await api('GET','/attempts/'+X.d.id);finished(d)}
+const blk=t=>e=>{e.preventDefault();ev(t)};
+const H={visibilitychange(){if(document.hidden)viol('hidden')},blur(){viol('blur')},
+ fullscreenchange(){const o=$('#ov');if(!o)return;if(!document.fullscreenElement){viol('fs_exit');o.hidden=false}else o.hidden=true},
+ copy:blk('copy'),cut:blk('cut'),paste:blk('paste'),contextmenu:blk('contextmenu'),
+ keydown(e){const k=e.key.toLowerCase();if(e.key==='F12'||e.key==='PrintScreen'||((e.ctrlKey||e.metaKey)&&['c','v','x','u','p','s','i','j'].includes(k))||(e.ctrlKey&&e.shiftKey&&['i','j','c'].includes(k))){e.preventDefault();ev('key')}},
+ beforeunload(e){e.preventDefault();e.returnValue=''}};
+function lock(on){for(const k in H)(k==='blur'||k==='beforeunload'?window:document)[on?'addEventListener':'removeEventListener'](k,H[k])}
+
+/* ---------- ผู้ดูแล ---------- */
+async function adminHome(tab){tab=tab||'exams';
+ const tabs=`<p><button class="${tab=='exams'?'':'s'}" onclick="adminHome('exams')">ข้อสอบ</button> <button class="${tab=='users'?'':'s'}" onclick="adminHome('users')">ผู้สอบ</button></p>`;
+ if(tab==='exams'){const{exams}=await api('GET','/admin/exams');
+  view(top()+`<div class="wrap">${tabs}<p><button onclick="examForm()">+ สร้างข้อสอบ</button></p>${exams.map(e=>`<div class="card"><b>${esc(e.title)}</b>
+  <div class="m">${e.questions} ข้อ · ${e.duration} นาที · ${fmt(e.openAt)} – ${fmt(e.closeAt)} · ผู้สอบ ${e.attempts} คน</div><p>
+  <button onclick="monitor('${e.id}')">ติดตาม/ตรวจ</button> <button class="s" onclick="examForm('${e.id}')">แก้ไข</button> <button class="s d" onclick="delExam('${e.id}')">ลบ</button></p></div>`).join('')||'<p class="m">ยังไม่มีข้อสอบ</p>'}</div>`)}
+ else{const{users}=await api('GET','/admin/users');
+  view(top()+`<div class="wrap">${tabs}<div class="card"><b>เพิ่มผู้สอบหลายคน</b><p class="m">บรรทัดละ 1 คน รูปแบบ: ชื่อผู้ใช้,รหัสผ่าน,ชื่อ-นามสกุล</p><textarea id="bl" rows="5"></textarea><button onclick="addUsers()">เพิ่ม</button></div>
+  <div class="card"><b>ผู้สอบทั้งหมด (${users.length})</b><div class="tw"><table>${users.map(u=>`<tr><td>${esc(u.username)}</td><td>${esc(u.name)}</td></tr>`).join('')}</table></div></div></div>`)}}
+async function addUsers(){const list=$('#bl').value.split('\n').map(l=>l.split(',').map(s=>s.trim())).filter(r=>r[0]).map(r=>({username:r[0],password:r[1],name:r[2]}));
+ const r=await api('POST','/admin/users',{list});alert('เพิ่มสำเร็จ '+r.added+' คน (ข้ามชื่อซ้ำ/รหัสผ่านสั้นกว่า 6 ตัว)');adminHome('users')}
+async function delExam(id){if(confirm('ลบข้อสอบและผลสอบทั้งหมดของข้อสอบนี้?')){await api('DELETE','/admin/exams/'+id);adminHome()}}
+async function examForm(id){EID=id||null;let e={title:'',duration:60,openAt:Date.now(),closeAt:Date.now()+864e5,maxViolations:3,showResult:true,questions:[]};
+ if(id)e=await api('GET','/admin/exams/'+id);Q=e.questions.map(q=>({...q}));
+ view(top()+`<div class="wrap"><h2>${id?'แก้ไข':'สร้าง'}ข้อสอบ</h2><div class="card"><label>ชื่อข้อสอบ<input id="t" value="${esc(e.title)}"></label>
+ <div class="g"><label>เวลาทำ (นาที)<input id="du" type="number" value="${e.duration}"></label><label>เปิดสอบ<input id="oa" type="datetime-local" value="${dl(e.openAt)}"></label>
+ <label>ปิดสอบ (หมดเวลาสูงสุดของทุกคน)<input id="ca" type="datetime-local" value="${dl(e.closeAt)}"></label><label>ละเมิดได้กี่ครั้ง (0 = ไม่จำกัด)<input id="mv" type="number" value="${e.maxViolations}"></label></div>
+ <label><input type="checkbox" id="sr" ${e.showResult?'checked':''}>แสดงคะแนนให้ผู้สอบเห็นหลังส่ง</label></div>
+ <div id="ql"></div><p><button class="s" onclick="Q.push({type:'mcq',text:'',options:[],answer:'',points:1});rq()">+ เพิ่มข้อ</button>
+ <label class="btn s" style="display:inline-block">นำเข้า CSV<input type="file" accept=".csv" hidden onchange="impCsv(this)"></label>
+ <span class="m">คอลัมน์: type,โจทย์,ตัวเลือกคั่นด้วย |,ข้อที่ถูก/เฉลย,คะแนน</span></p>
+ <p><button onclick="saveExam()">บันทึก</button> <button class="s" onclick="home()">ยกเลิก</button></p><p id="e" class="er"></p></div>`);rq()}
+function rq(){$('#ql').innerHTML=Q.map((q,i)=>`<div class="card"><b>ข้อ ${i+1}</b> <button class="s d" onclick="Q.splice(${i},1);rq()">ลบ</button>
+ <div class="g"><label>ประเภท<select onchange="Q[${i}].type=this.value;rq()">${[['mcq','ปรนัย'],['short','คำตอบสั้น (ตรวจอัตโนมัติ)'],['essay','อัตนัย (ตรวจเอง)'],['file','ส่งไฟล์ (ตรวจเอง)']].map(([v,l])=>`<option value="${v}" ${q.type==v?'selected':''}>${l}</option>`).join('')}</select></label>
+ <label>คะแนน<input type="number" value="${q.points}" oninput="Q[${i}].points=+this.value"></label></div>
+ <label>โจทย์<textarea rows="2" oninput="Q[${i}].text=this.value">${esc(q.text)}</textarea></label>
+ ${q.type=='mcq'?`<label>ตัวเลือก (บรรทัดละ 1 ข้อ)<textarea rows="4" oninput="Q[${i}].options=this.value.split('\\n').filter(x=>x.trim())">${esc((q.options||[]).join('\n'))}</textarea></label><label>ข้อที่ถูก (เลขลำดับตัวเลือก เช่น 2)<input type="number" value="${esc(q.answer)}" oninput="Q[${i}].answer=this.value"></label>`:''}
+ ${q.type=='short'?`<label>เฉลย (หลายคำตอบที่ยอมรับคั่นด้วย |)<input value="${esc(q.answer)}" oninput="Q[${i}].answer=this.value"></label>`:''}</div>`).join('')}
+function csv(t){const r=[];let row=[],c='',q=false;t=t.replace(/^\ufeff/,'');for(let i=0;i<t.length;i++){const h=t[i];if(q){if(h=='"'){if(t[i+1]=='"'){c+='"';i++}else q=false}else c+=h}else if(h=='"')q=true;else if(h==',')row.push(c),c='';else if(h=='\n'||h=='\r'){if(h=='\r'&&t[i+1]=='\n')i++;row.push(c);r.push(row);row=[];c=''}else c+=h}if(c||row.length){row.push(c);r.push(row)}return r.filter(x=>x.some(y=>y.trim()))}
+async function impCsv(el){const t=await el.files[0].text();csv(t).forEach((r,i)=>{if(i==0&&/^type$/i.test(r[0].trim()))return;
+ Q.push({type:(r[0]||'mcq').trim(),text:r[1]||'',options:(r[2]||'').split('|').map(s=>s.trim()).filter(Boolean),answer:(r[3]||'').trim(),points:+r[4]||1})});rq()}
+async function saveExam(){try{const b={title:$('#t').value,duration:+$('#du').value,openAt:new Date($('#oa').value).getTime(),closeAt:new Date($('#ca').value).getTime(),maxViolations:+$('#mv').value,showResult:$('#sr').checked,questions:Q};
+ await api(EID?'PUT':'POST','/admin/exams'+(EID?'/'+EID:''),b);adminHome()}catch(e){$('#e').textContent=e.message}}
+async function monitor(id){clearInterval(MI);const r=await api('GET','/admin/exams/'+id+'/attempts');const sv=r.serverNow;
+ view(top()+`<div class="wrap" id="mt"><p><button class="s" onclick="home()">← กลับ</button></p><h2>${esc(r.exam.title)}</h2>
+ <p><a href="/api/admin/exams/${id}/export.csv?token=${T}">⬇ ดาวน์โหลดผลสอบ (CSV)</a> <span class="m">· รีเฟรชอัตโนมัติทุก 5 วินาที</span></p>
+ <div class="card tw"><table><tr><th>ผู้สอบ</th><th>สถานะ</th><th>ตอบแล้ว</th><th>ละเมิด</th><th>เห็นล่าสุด</th><th>คะแนน</th><th></th></tr>
+ ${r.rows.map(a=>{const live=a.status==='in_progress',off=live&&sv-a.lastSeen>15000;return `<tr><td>${esc(a.name)} <span class="m">${esc(a.username)}</span></td>
+ <td>${live?(off?'<span class="er">ขาดการเชื่อมต่อ</span>':'<span class="ok">กำลังสอบ</span>'):'ส่งแล้ว'+(a.reason&&a.reason!='manual'?' ('+({timeout:'หมดเวลา',violation:'ละเมิดเกินกำหนด'}[a.reason]||a.reason)+')':'')}</td>
+ <td>${a.answered}/${r.exam.questions}</td><td class="${a.violations?'er':''}">${a.violations}</td><td>${fmt(a.lastSeen)}</td>
+ <td>${a.score==null?'-':a.score+'/'+r.exam.total}${a.pending?' <span class="m">(รอตรวจ)</span>':''}</td><td><button class="s" onclick="detail('${a.id}')">รายละเอียด</button></td></tr>`}).join('')||'<tr><td colspan="7" class="m">ยังไม่มีผู้เริ่มสอบ</td></tr>'}</table></div></div>`);
+ MI=setInterval(()=>$('#mt')?monitor(id):clearInterval(MI),5000)}
+async function detail(id){clearInterval(MI);const r=await api('GET','/admin/attempts/'+id),a=r.attempt;
+ view(top()+`<div class="wrap"><p><button class="s" onclick="monitor('${a.examId}')">← กลับ</button></p><h2>${esc(r.student)} · ${esc(r.exam.title)}</h2>
+ <p>สถานะ: ${a.status} · คะแนนปัจจุบัน <b>${r.score}/${r.total}</b> · ละเมิด ${a.violations} ครั้ง</p>
+ ${r.exam.questions.map((q,i)=>{const v=a.answers[q.id],man=q.type=='essay'||q.type=='file';let ans;
+  if(q.type=='file')ans=v?`<a href="/api/admin/files/${v.fid}?token=${T}">⬇ ${esc(v.name)}</a>`:'<i class="m">ไม่ได้ส่ง</i>';
+  else if(q.type=='mcq')ans=v?esc(q.options[v-1]):'<i class="m">ไม่ได้ตอบ</i>';else ans=v?`<span style="white-space:pre-wrap">${esc(v)}</span>`:'<i class="m">ไม่ได้ตอบ</i>';
+  const key=q.type=='mcq'?'เฉลย: '+esc(q.options[q.answer-1]):q.type=='short'?'เฉลย: '+esc(q.answer):'';
+  return `<div class="card"><b>ข้อ ${i+1}</b> <span class="m">(${q.points} คะแนน)</span><p>${esc(q.text)}</p><p>คำตอบ: ${ans}</p><p class="m">${key}</p>
+  ${man?(a.status=='submitted'?`<label>ให้คะแนน (0–${q.points})<input type="number" class="mk" data-q="${q.id}" min="0" max="${q.points}" value="${a.manual[q.id]??''}"></label>`:'<span class="m">รอผู้สอบส่งก่อนจึงให้คะแนนได้</span>'):`<span>ได้ ${a.auto?a.auto[q.id]:'-'} คะแนน</span>`}</div>`}).join('')}
+ ${a.status=='submitted'?`<button onclick="grade('${id}')">บันทึกคะแนน</button>`:''}
+ <div class="card"><b>บันทึกเหตุการณ์</b><div class="tw"><table>${r.logs.map(l=>`<tr><td>${new Date(l.t).toLocaleString('th-TH')}</td><td>${esc(l.type)}</td></tr>`).join('')}</table></div></div></div>`)}
+async function grade(id){const manual={};document.querySelectorAll('.mk').forEach(e=>manual[e.dataset.q]=e.value);await api('POST','/admin/attempts/'+id+'/grade',{manual});detail(id)}
+
+/* ---------- เริ่มต้น ---------- */
+(async()=>{if(T){try{ME=(await api('GET','/me')).user;return home()}catch(e){}}loginView()})();
+</script></body></html>

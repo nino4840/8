@@ -1,0 +1,9 @@
+{
+  "name": "online-exam-system",
+  "version": "1.0.0",
+  "description": "ระบบสอบออนไลน์ พร้อมโหมดล็อกหน้าจอ ตรวจอัตโนมัติ และแดชบอร์ดผู้ดูแล",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
+  "dependencies": { "express": "^4.19.2" }
+}
